@@ -21,6 +21,8 @@ end
 % was iris size specified?
 if nargin < 4
     iris_size_set = 0;
+else
+    iris_size_set = 1;
 end
 
 if Datapixx('IsReady')
@@ -33,7 +35,7 @@ if Datapixx('IsReady')
     Datapixx('SetLedIntensity', led_intensity);
     Datapixx('SetLens', which_lens); % 0 (25 mm), 1 (50 mm), 2 (75 mm)
     Datapixx('SetDistance', distance_cm+1); % Tracking distance is defined as the direct line from lens tip to subject's eyes + 1 cm.
-    if iris_size_set
+    if iris_size_set && ~isnan(iris_size_pix) && iris_size_pix > 10
         % Usual values: 70 @ 60cm with 25mm lens, 140 @ 60cm with 50mm and 150 for MRI.
         Datapixx('SetExpectedIrisSizeInPixels', iris_size_pix) 
     end
