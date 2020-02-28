@@ -1,4 +1,4 @@
-function calib_result = doTPxCalibration(scr_win, dlp_mode, scr_bg, scr_ppd)
+function calib_result = doTPxCalibration(scr_win, dlp_mode, scr_bg, scr_ppd, scr_lum_fac)
 % starts the calibration and validation procedures.
 % by Richard, 10/2018
 
@@ -6,14 +6,19 @@ function calib_result = doTPxCalibration(scr_win, dlp_mode, scr_bg, scr_ppd)
 if nargin==2
     scr_bg = 0.5;
     scr_ppd = load_default_scr_ppd;
+    scr_lum_fac = 1;
 elseif nargin==3
     scr_ppd = load_default_scr_ppd;
+    scr_lum_fac = 1;
+elseif nargin==4
+    scr_lum_fac = 1;
 elseif nargin==0
     error('scr_win has to be specified!');
 elseif nargin==1
     dlp_mode = NaN;
     scr_bg = 0.5;
     scr_ppd = load_default_scr_ppd;
+    scr_lum_fac = 1;
 end
 
 % start calibration here.
@@ -29,7 +34,7 @@ if Datapixx('IsReady') %% Datapixx is ready
     happy_yes = 0;
     while ~isnan(happy_yes) && ~happy_yes
         calib_result = TPxCalibrationValidationRichardsFunction(scr_win, scr_bg, ...
-            scr_ppd); % the rest of the arguments are default
+            scr_ppd, scr_lum_fac); % the rest of the arguments are default
         if isfield(calib_result, 'happy_val')
             happy_yes = calib_result.happy_val; % NaN can be returned
         else
@@ -69,5 +74,6 @@ scr_dist = 380; % distance from the observer to the screen [cm]
 scr_width = 250.2; % width of the screen [cm]
 scr_height = 140.7;
 scr_ppd = scr_dist*tan(1*pi/180)/(scr_width/scr_resx);
+scr_lum_fac = 1;
 end
 

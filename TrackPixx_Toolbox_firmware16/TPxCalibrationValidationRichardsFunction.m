@@ -1,5 +1,5 @@
 function TPx_calib_output = TPxCalibrationValidationRichardsFunction(windowPtr, scrBG, ...
-    scr_ppd, ...
+    scr_ppd, scr_lum_fac, ...
     n_calibration_points, eccentricity_points_x, eccentricity_points_y, ...
     duration_points, duration_shrinking, ...
     led_intensity, iris_size)
@@ -10,8 +10,9 @@ function TPx_calib_output = TPxCalibrationValidationRichardsFunction(windowPtr, 
 switch nargin % there are currently 10 arguments
     case 0
         windowPtr = []; % pointer to the screen to be used, if empty, then screen is created
-        scrBG = 255/2; % screen background color
+        scrBG = 0; % screen background color
         scr_ppd = 50.9; % ppd for trackpixx setup at full HD, 380 cm viewing distance with 250.2 cm screen width
+        scr_lum_fac = 1; % scaling factor for the luminance of text, image, calibration dots
         n_calibration_points = 13;
         eccentricity_points_x = 600; % at full HD around 12 dva
         eccentricity_points_y = 350;
@@ -20,8 +21,9 @@ switch nargin % there are currently 10 arguments
         led_intensity = 8; % value from 1 to 8, default 8
         iris_size = 140;
     case 1
-        scrBG = 255/2;
+        scrBG = 0;
         scr_ppd = 50.9;
+        scr_lum_fac = 1; 
         n_calibration_points = 13;
         eccentricity_points_x = 600; 
         eccentricity_points_y = 350;
@@ -31,6 +33,7 @@ switch nargin % there are currently 10 arguments
         iris_size = 140;
     case 2
         scr_ppd = 50.9;
+        scr_lum_fac = 1; 
         n_calibration_points = 13;
         eccentricity_points_x = 600;
         eccentricity_points_y = 350;
@@ -39,6 +42,7 @@ switch nargin % there are currently 10 arguments
         led_intensity = 8;
         iris_size = 140;
     case 3
+        scr_lum_fac = 1; 
         n_calibration_points = 13;
         eccentricity_points_x = 600;
         eccentricity_points_y = 350;
@@ -47,6 +51,7 @@ switch nargin % there are currently 10 arguments
         led_intensity = 8;
         iris_size = 140;
     case 4
+        n_calibration_points = 13;
         eccentricity_points_x = 600;
         eccentricity_points_y = 350;
         duration_points = 1.5;
@@ -54,24 +59,31 @@ switch nargin % there are currently 10 arguments
         led_intensity = 8;
         iris_size = 140;
     case 5
+        eccentricity_points_x = 600;
         eccentricity_points_y = 350;
         duration_points = 1.5;
         duration_shrinking = 0.5;
         led_intensity = 8;
         iris_size = 140;
     case 6
+        eccentricity_points_y = 350;
         duration_points = 1.5;
         duration_shrinking = 0.5;
         led_intensity = 8;
         iris_size = 140;
     case 7
+        duration_points = 1.5;
         duration_shrinking = 0.5;
         led_intensity = 8;
         iris_size = 140;
     case 8
+        duration_shrinking = 0.5;
         led_intensity = 8;
         iris_size = 140;
     case 9
+        led_intensity = 8;
+        iris_size = 140;
+    case 10
         iris_size = 140;
 end
 
@@ -105,19 +117,24 @@ else
     windowRect = Screen('Rect', windowPtr);
 end
 
-
+%% Step 1.3, get the color reference values
+white_index = WhiteIndex(windowPtr);
 
 
 %% Step 2, show the eye for focus
 [left_rec, left_rec_pixel_coordinates, right_rec, right_rec_pixel_coordinates, escape_this_calib, calib_type] = ...
-    select_eyes(windowPtr, windowRect, scrBG);
-WaitSecs(0.2);
+    select_eyes(windowPtr, windowRect, scrBG, scr_lum_fac);
 
+% then, continue
 if escape_this_calib == 0 % only if we didn't press escape
     
     % clear last calibration if we have decided to run a calibration
     Datapixx('ClearCalibration');
     Datapixx('RegWrRd');
+    
+    %% Step 2.NEW, perform a pupil size calibration once
+    TPxPupilCalibration(windowPtr);
+    
     
     %% Step 3, Calibrations and calibrations results.
     
@@ -177,7 +194,7 @@ if escape_this_calib == 0 % only if we didn't press escape
     % for one second for the eyes to settle there
     DrawFillRect(windowPtr, scrBG); % make screen background
     Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-        [33;18]', [255 255 255; 200 0 0]', [], 1);
+        [33;18]', [white_index white_index white_index; white_index*(200/255) 0 0]'*scr_lum_fac, [], 1);
     Screen('Flip', windowPtr);
     if i == 0 % the very first dot should be presented a little longer
         WaitSecs(1);
@@ -191,7 +208,7 @@ if escape_this_calib == 0 % only if we didn't press escape
             Sy = xyCartesian(2,mod(i,nmb_pts)+1);
             DrawFillRect(windowPtr, scrBG); % make screen background
             Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-                [35;20]', [255 255 255; 200 0 0]', [], 1);
+                [35;20]', [white_index white_index white_index; white_index*(200/255) 0 0]'*scr_lum_fac, [], 1);
             Screen('Flip', windowPtr);
             showing_dot = 1;
             t = t2;
@@ -202,7 +219,8 @@ if escape_this_calib == 0 % only if we didn't press escape
         
         % this is this fancy and inefficient shrinking dot type of calibration
         if showing_dot
-            shrinking_dot(windowPtr, scrBG, duration_shrinking, xy, nmb_pts, i, t, t2);
+            shrinking_dot(windowPtr, scrBG, duration_shrinking, xy, nmb_pts, i, t, t2, ...
+                scr_lum_fac);
         end
         
         % once the dot has its small form, we collect data
@@ -335,10 +353,12 @@ if escape_this_calib == 0 % only if we didn't press escape
                         %% Calibration results 1 of 3
                         DrawFillRect(windowPtr, scrBG); % make screen background
                         DrawFormattedText(windowPtr, '\n Calibration results 1 of 3. \n Showing raw data results. If one dot seems off, calibration might be bad.\n Press V to validate, Y to follow gaze, N to restart.', 'center',...
-                            100, 255);
+                            100, white_index*scr_lum_fac);
                         % draw position to screen
-                        Screen('DrawDots', windowPtr, [raw_vector_sc(:,1)'; raw_vector_sc(:,2)'], [10]', [255 0 0]', [], 1);
-                        Screen('DrawDots', windowPtr, [raw_vector_sc(:,3)'; raw_vector_sc(:,4)'], [10]', [0 0 255]', [], 1);
+                        Screen('DrawDots', windowPtr, [raw_vector_sc(:,1)'; raw_vector_sc(:,2)'], [10]', ...
+                            [white_index 0 0]'*scr_lum_fac, [], 1);
+                        Screen('DrawDots', windowPtr, [raw_vector_sc(:,3)'; raw_vector_sc(:,4)'], [10]', ...
+                            [0 0 white_index]'*scr_lum_fac, [], 1);
                         Screen('Flip', windowPtr);
                         if demo_mode
                             % To save pictures
@@ -350,10 +370,14 @@ if escape_this_calib == 0 % only if we didn't press escape
                     case 2
                         %% Calibration results 2 of 3: right eye
                         DrawFillRect(windowPtr, scrBG); % make screen background
-                        DrawFormattedText(windowPtr, '\n Calibration results 2 of 3. \n Showing calibration dots and screen from polynomial for left eye (right eye on screen). \n If the dots are off or the lines are not well connected, calibration for this eye might be off. \n Press V to validate, Y to follow gaze, N to restart.', 'center', 100, 255);
-                        Screen('DrawDots', windowPtr, [xy(1,:)' xy(2,:)']', [30]', [255 255 255]', [], 1);
-                        Screen('DrawDots', windowPtr, [x_eval' y_eval']', [20]', [255 0 255]', [], 1);
-                        Screen('DrawDots', windowPtr, interpolated_dots, [8]', [255 0 0]', [], 1);
+                        DrawFormattedText(windowPtr, '\n Calibration results 2 of 3. \n Showing calibration dots and screen from polynomial for left eye (right eye on screen). \n If the dots are off or the lines are not well connected, calibration for this eye might be off. \n Press V to validate, Y to follow gaze, N to restart.', ...
+                            'center', 100, white_index*scr_lum_fac);
+                        Screen('DrawDots', windowPtr, [xy(1,:)' xy(2,:)']', [30]', ...
+                            [white_index white_index white_index]'*scr_lum_fac, [], 1);
+                        Screen('DrawDots', windowPtr, [x_eval' y_eval']', [20]', ...
+                            [white_index 0 white_index]'*scr_lum_fac, [], 1);
+                        Screen('DrawDots', windowPtr, interpolated_dots, [8]', ...
+                            [white_index 0 0]'*scr_lum_fac, [], 1);
                         Screen('Flip', windowPtr);
                         WaitSecs(1);
                         if demo_mode
@@ -364,10 +388,14 @@ if escape_this_calib == 0 % only if we didn't press escape
                     case 3
                         %% Calibration results 3 of 3: left eye
                         DrawFillRect(windowPtr, scrBG); % make screen background
-                        DrawFormattedText(windowPtr, '\n Calibration results 3 of 3. \n Showing calibration dots and screen from polynomial for right eye (left eye on screen). \n If the dots are off or the lines are not well connected, calibration for this eye might be off. \n Press V to validate, Y to follow gaze, N to restart.', 'center', 100, 255);
-                        Screen('DrawDots', windowPtr, [xy(1,:)' xy(2,:)']', [30]', [255 255 255]', [], 1);
-                        Screen('DrawDots', windowPtr, [x_eval_L' y_eval_L']', [20]', [0 255 255]', [], 1);
-                        Screen('DrawDots', windowPtr, interpolated_dots_L, [8]', [0 0 255]', [], 1);
+                        DrawFormattedText(windowPtr, '\n Calibration results 3 of 3. \n Showing calibration dots and screen from polynomial for right eye (left eye on screen). \n If the dots are off or the lines are not well connected, calibration for this eye might be off. \n Press V to validate, Y to follow gaze, N to restart.',...
+                            'center', 100, white_index*scr_lum_fac);
+                        Screen('DrawDots', windowPtr, [xy(1,:)' xy(2,:)']', [30]', ...
+                            [white_index white_index white_index]'*scr_lum_fac, [], 1);
+                        Screen('DrawDots', windowPtr, [x_eval_L' y_eval_L']', [20]', ...
+                            [0 white_index white_index]'*scr_lum_fac, [], 1);
+                        Screen('DrawDots', windowPtr, interpolated_dots_L, [8]', ...
+                            [0 0 white_index]'*scr_lum_fac, [], 1);
                         Screen('Flip', windowPtr);
                         WaitSecs(1);
                         if demo_mode
@@ -407,14 +435,16 @@ if escape_this_calib == 0 % only if we didn't press escape
                     KbReleaseWait;
                     WaitSecs(0.5);
                     [left_rec, left_rec_pixel_coordinates, right_rec, right_rec_pixel_coordinates, escape_this_calib] = ...
-                        select_eyes(windowPtr, windowRect, scrBG);
+                        select_eyes(windowPtr, windowRect, scrBG, scr_lum_fac);
                     if escape_this_calib % we pressed Escape during eye selection
                         finish_calibration = 1;
                     else
+                        % another pupil size calibration?
+                        TPxPupilCalibration(windowPtr);
                         % display the center dot once more for 1 second
                         DrawFillRect(windowPtr, scrBG); % make screen background
                         Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-                            [33;18]', [255 255 255; 200 0 0]', [], 1);
+                            [33;18]', [white_index white_index white_index; white_index*(200/255) 0 0]'*scr_lum_fac, [], 1);
                         Screen('Flip', windowPtr);
                         if i == 0 % the very first dot should be presented a little longer
                             WaitSecs(1);
@@ -477,7 +507,8 @@ if escape_this_calib == 0 % only if we didn't press escape
     % by following your gaze.
     if ~isnan(validation_requested) && validation_requested == 0 % no validation requested
         DrawFillRect(windowPtr, scrBG); % make screen background
-        DrawFormattedText(windowPtr, '\n Gaze Follower. \n ', 'center', windowRect(4)/2);
+        DrawFormattedText(windowPtr, '\n Gaze Follower. \n ', 'center', windowRect(4)/2, [], ...
+            white_index*scr_lum_fac);
         Screen('Flip', windowPtr);
         WaitSecs(0.3);
         
@@ -502,8 +533,9 @@ if escape_this_calib == 0 % only if we didn't press escape
             DrawFillRect(windowPtr, scrBG); % make screen background
             DrawFormattedText(windowPtr, ['Following your gaze now!\nBlue = Physical Right Eye\nRed = Physical Left Eye\n',... 
                 '\nPress Y to accept this calibration, press N to start again.'],...
-                'center', 700, 255);
-            Screen('DrawDots', windowPtr, [xy(1,:)' xy(2,:)']', [20]', [255 255 255]', [], 1); % the calibration dots
+                'center', 700, white_index*scr_lum_fac);
+            Screen('DrawDots', windowPtr, [xy(1,:)' xy(2,:)']', [20]', ...
+                [white_index white_index white_index]'*scr_lum_fac, [], 1); % the calibration dots
             % Get Eye position
             [rightEyeTopLeft, leftEyeTopLeft] = getEyePosition_Screen;
             xScreenRight = rightEyeTopLeft(1);
@@ -530,11 +562,15 @@ if escape_this_calib == 0 % only if we didn't press escape
             % mean of the last 10 samples
             if visible
                 if mfilter
-                    Screen('DrawDots', windowPtr, [mean(xAvgRight); mean(yAvgRight)], [15]', [255 0 0]', [], 1);
-                    Screen('DrawDots', windowPtr, [mean(xAvgLeft); mean(yAvgLeft)], [15]', [0 0 255]', [], 1);
+                    Screen('DrawDots', windowPtr, [mean(xAvgRight); mean(yAvgRight)], [15]', ...
+                        [white_index 0 0]'*scr_lum_fac, [], 1);
+                    Screen('DrawDots', windowPtr, [mean(xAvgLeft); mean(yAvgLeft)], [15]', ...
+                        [0 0 white_index]'*scr_lum_fac, [], 1);
                 else
-                    Screen('DrawDots', windowPtr, [xScreenRight; yScreenRight], [15]', [255 0 0]', [], 1);
-                    Screen('DrawDots', windowPtr, [xScreenLeft; yScreenLeft], [15]', [0 0 255]', [], 1);
+                    Screen('DrawDots', windowPtr, [xScreenRight; yScreenRight], [15]', ...
+                        [white_index 0 0]'*scr_lum_fac, [], 1);
+                    Screen('DrawDots', windowPtr, [xScreenLeft; yScreenLeft], [15]', ...
+                        [0 0 white_index]'*scr_lum_fac, [], 1);
                 end
             end
             
@@ -667,7 +703,7 @@ if escape_this_calib == 0 % only if we didn't press escape
         % before the calibration loop starts, we want to present the central dot
         % for one second for the eyes to settle there
         Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-            [33;18]', [255 255 255; 200 0 0]', [], 1);
+            [33;18]', [white_index white_index white_index; white_index*(200/255) 0 0]'*scr_lum_fac, [], 1);
         Screen('Flip', windowPtr);
         if i == 0 % the very first dot should be presented a little longer
             WaitSecs(1);
@@ -679,7 +715,7 @@ if escape_this_calib == 0 % only if we didn't press escape
                 disp(validation_dot_pos)
                 DrawFillRect(windowPtr, scrBG); % make screen background
                 Screen('DrawDots', windowPtr, validation_dot_pos,...
-                    [35;20]', [255 255 255; 200 0 0]', [], 1);
+                    [35;20]', [white_index white_index white_index; white_index*(200/255) 0 0]'*scr_lum_fac, [], 1);
                 Screen('Flip', windowPtr);
                 showing_dot = 1;
                 t = t2;
@@ -694,7 +730,8 @@ if escape_this_calib == 0 % only if we didn't press escape
             
             % this is this fancy and inefficient shrinking dot type of calibration
             if (i < nmb_pts) && showing_dot
-                shrinking_dot(windowPtr, scrBG, duration_shrinking, xy, nmb_pts, i, t, t2);
+                shrinking_dot(windowPtr, scrBG, duration_shrinking, xy, nmb_pts, i, t, t2, ...
+                    scr_lum_fac);
             end
             
             % once the dot has its small form, we collect data
@@ -738,15 +775,18 @@ if escape_this_calib == 0 % only if we didn't press escape
                     WaitSecs(0.2);
                     DrawFillRect(windowPtr, scrBG); % make screen background
                     % draw validation dots
-                    Screen('DrawDots', windowPtr, [xy(1,:)' xy(2,:)']', [30]', [255 255 255]', [], 1);
+                    Screen('DrawDots', windowPtr, [xy(1,:)' xy(2,:)']', [30]', ...
+                        [white_index white_index white_index]'*scr_lum_fac, [], 1);
                     % draw measured means
-                    Screen('DrawDots', windowPtr, screen_vector(:,1:2)', [15]', [255 0 0]', [], 1);
-                    Screen('DrawDots', windowPtr, screen_vector(:,3:4)', [15]', [0 0 255]', [], 1);
+                    Screen('DrawDots', windowPtr, screen_vector(:,1:2)', [15]', ...
+                        [white_index 0 0]'*scr_lum_fac, [], 1);
+                    Screen('DrawDots', windowPtr, screen_vector(:,3:4)', [15]', ...
+                        [0 0 white_index]'*scr_lum_fac, [], 1);
                     % draw measured SDs
-                    Screen('FrameOval', windowPtr, [255 0 0]', ...
+                    Screen('FrameOval', windowPtr, [white_index 0 0]'*scr_lum_fac, ...
                         [screen_vector(:,1:2)'-screen_vector_sd(:,1:2)'; screen_vector(:,1:2)'+screen_vector_sd(:,1:2)'], ...
                         1);
-                    Screen('FrameOval', windowPtr, [0 0 255]', ...
+                    Screen('FrameOval', windowPtr, [0 0 white_index]'*scr_lum_fac, ...
                         [screen_vector(:,3:4)'-screen_vector_sd(:,3:4)'; screen_vector(:,3:4)'+screen_vector_sd(:,3:4)'], ...
                         1);
                     % draw measured errors in this dirty loop
@@ -756,14 +796,15 @@ if escape_this_calib == 0 % only if we didn't press escape
                     for w = 1:length(distRight)
                         DrawFormattedText(windowPtr, [num2str(round(distRight(w),1)), '\n', ...
                             num2str(round(distLeft(w),1))], ...
-                            xy(1,w)+horizontal_space_for_text, xy(2,w));
+                            xy(1,w)+horizontal_space_for_text, xy(2,w), ...
+                            white_index*scr_lum_fac);
                     end
                     % mean error
                     DrawFormattedText(windowPtr, ['\n Validation results. \n Mean error left: ',...
                         num2str(round(mean(distRight, 'omitnan'),1)),...
                         ', right: ', num2str(round(mean(distLeft, 'omitnan'),1)),...
                         '\n Press Y to accept this calibration, press N to start again.'],...
-                        'center', 100, 255);
+                        'center', 100, white_index*scr_lum_fac);
                     Screen('Flip', windowPtr);
 %                 end
             end
@@ -834,36 +875,37 @@ Screen('FillRect',windowPtr, [scrBG, scrBG, scrBG, 0]); % clear screen
 end
 
 %% shrinking dot function
-function shrinking_dot(windowPtr, scrBG, duration_shrinking, xy, nmb_pts, i, t, t2)
+function shrinking_dot(windowPtr, scrBG, duration_shrinking, xy, nmb_pts, i, t, t2, scr_lum_fac)
 DrawFillRect(windowPtr, scrBG); % make screen background
+white_index = WhiteIndex(windowPtr); % get white, 255 or 1
 % cool shrinking animation
 if((t2 - t) > 0.9*duration_shrinking)
     Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-        [15;5]', [255 255 255; 200 0 0]', [], 1);
+        [15;5]', [white_index white_index white_index; white_index*(200/255) 0 0]'*scr_lum_fac, [], 1);
 elseif((t2 - t) > 0.8*duration_shrinking)
     Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-        [17;6]', [255 255 255; 0 0 0]', [], 1);
+        [17;6]', [white_index white_index white_index; 0 0 0]'*scr_lum_fac, [], 1);
 elseif((t2 - t) > 0.7*duration_shrinking)
     Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-        [20;8]', [255 255 255; 200 0 0]', [], 1);
+        [20;8]', [white_index white_index white_index; white_index*(200/255) 0 0]'*scr_lum_fac, [], 1);
 elseif((t2 - t) > 0.6*duration_shrinking)
     Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-        [22;10]', [255 255 255; 0 0 0]', [], 1);
+        [22;10]', [white_index white_index white_index; 0 0 0]'*scr_lum_fac, [], 1);
 elseif((t2 - t) > 0.5*duration_shrinking)
     Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-        [25;12]', [255 255 255; 200 0 0]', [], 1);
+        [25;12]', [white_index white_index white_index; white_index*(200/255) 0 0]'*scr_lum_fac, [], 1);
 elseif((t2 - t) > 0.4*duration_shrinking)
     Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-        [27;14]', [255 255 255; 0 0 0]', [], 1);
+        [27;14]', [white_index white_index white_index; 0 0 0]'*scr_lum_fac, [], 1);
 elseif((t2 - t) > 0.3*duration_shrinking)
     Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-        [30;16]', [255 255 255; 200 0 0]', [], 1);
+        [30;16]', [white_index white_index white_index; white_index*(200/255) 0 0]'*scr_lum_fac, [], 1);
 elseif((t2 - t) > 0.2*duration_shrinking)
     Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-        [31;17]', [255 255 255; 0 0 0]', [], 1);
+        [31;17]', [white_index white_index white_index; 0 0 0]'*scr_lum_fac, [], 1);
 elseif((t2 - t) > 0.1*duration_shrinking)
     Screen('DrawDots', windowPtr, [xy(:,mod(i,nmb_pts)+1) xy(:,mod(i,nmb_pts)+1)],...
-        [33;18]', [255 255 255; 200 0 0]', [], 1);
+        [33;18]', [white_index white_index white_index; white_index*(200/255) 0 0]'*scr_lum_fac, [], 1);
 end
 Screen('Flip', windowPtr);
 end
@@ -904,12 +946,15 @@ end
 
 %% auxiliary function: select eyes
 function [left_rec, left_rec_pixel_coordinates, right_rec, right_rec_pixel_coordinates, escape_selection, calib_type] = ...
-    select_eyes(windowPtr, windowRect, scrBG)
+    select_eyes(windowPtr, windowRect, scrBG, scr_lum_fac)
 
 ShowCursor;
 % where should the camera image be shown?
 cam_rect = [windowRect(3)/2-1280/2 0 windowRect(3)/2+1280/2 1024];
 calib_type = 0;
+
+% get white index
+white_index = WhiteIndex(windowPtr);
 
 % initialize structures that show where the eyes are
 left_rec = [0 0 0 0];
@@ -926,18 +971,45 @@ disp(['RegWrRd took ', num2str(round((t2-t)*1000, 2)), ' ms']);
 Screen('TextSize', windowPtr, 24);
 while (1) % This is the eye selection loop
     if ((t2 - t) > 1/60) % Just refresh at 60Hz.
+        % present camera image
         DrawFillRect(windowPtr, scrBG); % make screen background
         Datapixx('RegWrRd');
         image = Datapixx('GetEyeImage');
+%         image = image * scr_lum_fac; % scale luminance of image?
         textureIndex=Screen('MakeTexture', windowPtr, image'); % fliplr(image')
         Screen('DrawTexture', windowPtr, textureIndex, [], cam_rect);
         
-        % present selections
+        %---------------------- New feedback on iris size etc -------------------------------
+        %Get eye data in camera space
+        expectedIrisSize = Datapixx('GetExpectedIrisSizeInPixels');
+        [ppLeftMajor, ~, ppRightMajor, ~] = Datapixx('GetPupilSize');
+        [ppLeftX, ppLeftY, ppRightX, ppRightY] = Datapixx('GetPupilCoordinatesInPixels');
+        
+        %Convert eye data in camera space into cam_rect for display
+        camLeft = Datapixx('ConvertCoordSysToCustom', [ppLeftX, ppLeftY], -cam_rect(1), 1, -cam_rect(2), 1);
+        camRight = Datapixx('ConvertCoordSysToCustom', [ppRightX, ppRightY], -cam_rect(1), 1, -cam_rect(2), 1);
+        
+        %Draw left eye data in blue
+        Screen('DrawLine', windowPtr, [0,0,white_index], camLeft(1), camLeft(2)-ppLeftMajor/2, camLeft(1), camLeft(2)+ppLeftMajor/2, 2);
+        Screen('DrawLine', windowPtr, [0,0,white_index], camLeft(1)-ppLeftMajor/2, camLeft(2), camLeft(1)+ppLeftMajor/2, camLeft(2), 2);
+        Screen('FrameOval', windowPtr, [0,0,white_index], [camLeft(1)-expectedIrisSize/2, camLeft(2)-expectedIrisSize/2, camLeft(1)+expectedIrisSize/2, camLeft(2)+expectedIrisSize/2], 2);
+        
+        %Draw right eye data in red
+        Screen('DrawLine', windowPtr, [white_index,0,0], camRight(1), camRight(2)-ppRightMajor/2, camRight(1), camRight(2)+ppRightMajor/2, 2);
+        Screen('DrawLine', windowPtr, [white_index,0,0], camRight(1)-ppRightMajor/2, camRight(2), camRight(1)+ppRightMajor/2, camRight(2), 2);
+        Screen('FrameOval', windowPtr, [white_index,0,0], [camRight(1)-expectedIrisSize/2, camRight(2)-expectedIrisSize/2, camRight(1)+expectedIrisSize/2, camRight(2)+expectedIrisSize/2], 2);
+        %----------------------------------------------------------
+        
+        % now present SELECTIONS
         if left_rec(1) ~= 0
-            Screen('FrameRect', windowPtr, [0 0 255], left_rec);
+            Screen('FrameRect', windowPtr, ...
+                [0 0 white_index]*1, ... % scale with luminance?
+                left_rec);
         end
         if right_rec(1) ~= 0
-            Screen('FrameRect', windowPtr, [255 0 0], right_rec);
+            Screen('FrameRect', windowPtr, ...
+                [white_index 0 0]*1, ... % scale with luminance?
+                right_rec);
         end
         % present instructions and then options
         if left_rec(1) ~= 0
@@ -950,7 +1022,8 @@ while (1) % This is the eye selection loop
             text_to_draw = ' Left click (blue) on the left eye on the screen (physical right eye).\nC or middle mouse to clear\nA or D to decrease or increase search limits size.\nEscape to exit.';
         end
         % draw Focus the eyes in any case
-        DrawFormattedText(windowPtr, strcat('Instructions:\n\n 1- Focus the eyes.\n\n 2- ',text_to_draw), 'center', 700, 255);
+        DrawFormattedText(windowPtr, strcat('Instructions:\n\n 1- Focus the eyes.\n\n 2- ',text_to_draw), 'center', 700, ...
+            white_index*scr_lum_fac);
         Screen('Flip', windowPtr);
         t = t2;
         Screen('Close',textureIndex);
@@ -1019,5 +1092,90 @@ while (1) % This is the eye selection loop
 end % of the eye selection loop
 HideCursor; 
 KbReleaseWait;
+
+end
+
+
+function TPxPupilCalibration(scr_win) % , scr_bg,
+% Pupil size calibration, based on the Vpixx demo,
+% adapted by Richard, 02/2020
+
+white_index = WhiteIndex(scr_win);
+
+% this is the Vpixx defaults. I won't dare to change them
+BackgroundIntensity = 0; % vpixx: 15
+dotIntensity = white_index * (5/255); % vpixx: 40
+increment = white_index * (50/255); % vpixx: 240 
+dot_increment_factor = 1; % vpixx: 0.84314
+maxIntensity = white_index * (250/255);
+waitTime = 0.8;
+dotSize = [33;18]'; % vpixx: [20;6]'
+
+%Display low luminance display with a target in the center
+Screen('FillRect', scr_win, [BackgroundIntensity BackgroundIntensity BackgroundIntensity]');
+Screen('DrawDots', scr_win, [960 960; 540 540], dotSize, [dotIntensity 0 0; 0 dotIntensity 0]', [], 1);
+text_to_draw = ['Pupil Size Calibration: Please fixate on the dot in the center of the screen.' ...
+    '\n\nPress any key to start\nPress Escape to skip'];
+DrawFormattedText(scr_win, text_to_draw, 'center', 700, dotIntensity);
+Screen('Flip', scr_win);
+
+% Keypress goes to next step of the demo
+[~, keycode, ~] = KbPressWait;
+if keycode(KbName('escape'))
+    do_escape = 1;
+else
+    do_escape = 0;
+end
+
+% perform calibration, if escape was not pressed
+if do_escape == 0
+    
+    % it's necessary to clear the old pupil calibration
+    Datapixx('PpSizeCalClear');
+    Datapixx('RegWrRd');
+
+    
+    % first presentation
+    Screen('FillRect', scr_win, [BackgroundIntensity BackgroundIntensity BackgroundIntensity]');
+    Screen('DrawDots', scr_win, [960 960; 540 540], dotSize, [dotIntensity 0 0; 0 dotIntensity 0]', [], 1);
+    Screen('Flip', scr_win);
+    
+    %Record pupil size data
+    Datapixx('PpSizeCalGetData');
+    Datapixx('RegWrRd');
+    
+    %Loop through a rapid luminance change
+    while(1)
+        t = Datapixx('GetTime');
+        t2 = t;
+        while(t - t2 < waitTime)
+            Datapixx('RegWrRd');
+            t = Datapixx('GetTime');
+        end
+        
+        %if luminance change has finished, finish the pupil size
+        %calibration and exit the loop
+        if (BackgroundIntensity >= maxIntensity)
+            Datapixx('PpSizeCalGetDataComplete');
+            Datapixx('RegWrRd');
+            break;
+        end
+        
+        %ramp up background intensity
+        BackgroundIntensity = BackgroundIntensity + increment;
+        dotIntensity = dotIntensity + (increment * dot_increment_factor); 
+        Screen('FillRect', scr_win, [BackgroundIntensity BackgroundIntensity BackgroundIntensity]');
+        Screen('DrawDots', scr_win, [960 960; 540 540], dotSize, [dotIntensity 0 0; 0 dotIntensity 0]', [], 1);
+        Screen('Flip', scr_win);
+    end
+    
+    Screen('FillRect', scr_win, [0 0 0]');
+    Screen('Flip', scr_win);
+    
+    %finish the pupil size calibration by performing a linear regression on
+    %the data
+    Datapixx('PpSizeCalLinearRegression');
+    Datapixx('RegWrRd');
+end % if not do_escape
 
 end

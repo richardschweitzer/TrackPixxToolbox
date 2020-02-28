@@ -8,30 +8,38 @@ close all
 average_across_n_samples = 8; % how many samples to use for GetTPxLatestSample
 simple_version = 1; % 0: uses a big buffer that's passed to ReadTPxData, 1: without pre-allocation
 se_version = 1; % 0: display oval of fixed radius, 1: display oval of variable width (SE-based)
+% screen parameters
+scr.resx = 1920;
+scr.dist = 380;
+scr.width = 250.2; % in cm
+scr.ppd = scr.dist*tan(1*pi/180)/(scr.width/scr.resx);
+scr.lum_fac = 1;
+% Trackpixx-related
 led_intensity = 8;
 tracker_distance = 60;
 tracker_lens = 1; % 1: 50 mm, see manual
-iris_size_pix = 140;
+iris_size_pix = 155;
 record_for_time = 60; % recording time in seconds
 extra_record_time = 10; % extra recording time for the buffer to make sure whatever
 right_eye_cols = 22:23; % physical right eye is left eye on calibration screen (blue)
 right_eye_color = [0,0,255];
 left_eye_cols = 24:25; % physical left eye is right eye on calibration screen (red)
 left_eye_color = [255,0,0];
-% screen parameters
-scr.resx = 1920;
-scr.dist = 380;
-scr.width = 250.2; % in cm
-scr.ppd = scr.dist*tan(1*pi/180)/(scr.width/scr.resx);
 % stim parameters
+which_image = 'croc_gray.jpg';
 dot_size = 14;
 small_dot_size = dot_size/2;
 oval_width = 5;
+right_eye_color = round(right_eye_color*scr.lum_fac);
+left_eye_color = round(left_eye_color*scr.lum_fac);
 
 %% initialize datapixx and trackpixx
 WaitSecs(1);
 Datapixx('Open');
 InitializeTPx(led_intensity, tracker_lens, tracker_distance);
+
+expectedIrisSize = Datapixx('GetExpectedIrisSizeInPixels');
+
 
 %% Setup Screen etc
 thisScreen = max(Screen('Screens'));
@@ -39,8 +47,8 @@ scrGray = GrayIndex(thisScreen);
 scrBlack = BlackIndex(thisScreen);
 scrWhite = WhiteIndex(thisScreen);
 % define the background color -----!
-scrBgCol = scrGray;
-scrFgCol = scrWhite;
+scrBgCol = scrBlack;
+scrFgCol = scrWhite*scr.lum_fac;
 % open window
 [windowPtr, windowRect] = PsychImaging('OpenWindow', thisScreen, scrBgCol);
 scrFR = round(Screen('FrameRate', windowPtr));
@@ -49,8 +57,10 @@ Priority(MaxPriority(windowPtr));
 
 
 %% Calibrate for the first time
+% % do a pupil size calibration, new in firmware 16, I think
+% doTPxPupilCalibration(windowPtr, 0, scr.lum_fac);
 % calibration procedure here.
-first_calib_res = doTPxCalibration(windowPtr, 0, scrBgCol, scr.ppd);
+first_calib_res = doTPxCalibration(windowPtr, 0, scrBgCol, scr.ppd, scr.lum_fac);
 Screen('Flip', windowPtr);
 KbReleaseWait;
 WaitSecs(1);
@@ -67,7 +77,8 @@ flip_i = 0;
 pos_1 = [];
 buf_1 = [];
 % load the picture and make the texture
-im = imread('croc_gray.jpg');
+im = imread(which_image);
+im = round(im * scr.lum_fac);
 im_texture = Screen('MakeTexture', windowPtr, im);
 % start TrackPixx recording here
 [rec_start_time_pc, rec_start_time, ...
